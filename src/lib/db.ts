@@ -1,0 +1,79 @@
+import "server-only";
+import mysql, {
+  type Pool,
+  type PoolConnection,
+  type ResultSetHeader,
+  type RowDataPacket,
+} from "mysql2/promise";
+import { connection } from "next/server";
+
+// Reuse one pool across hot reloads in development.
+const globalForDb = globalThis as unknown as { mysqlPool?: Pool };
+
+const pool =
+  globalForDb.mysqlPool ??
+  mysql.createPool({
+    host: process.env.DB_HOST ?? "127.0.0.1",
+    port: Number(process.env.DB_PORT ?? 3306),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME ?? "mangaldeep_claims",
+    connectionLimit: 5,
+    dateStrings: true, // DATE columns come back as 'YYYY-MM-DD'
+    decimalNumbers: true, // DECIMAL columns come back as numbers
+  });
+
+if (process.env.NODE_ENV !== "production") globalForDb.mysqlPool = pool;
+
+type Param = string | number | null;
+
+/** Runs a SELECT with ? placeholders and returns the rows. Always reads fresh data. */
+export async function query<T>(sql: string, params: Param[] = []): Promise<T[]> {
+  await connection();
+  const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
+  return rows as T[];
+}
+
+/** Runs a read-only report query as plain text (used by the SQL Showcase page). */
+export async function runReport(sql: string): Promise<Record<string, unknown>[]> {
+  await connection();
+  const [rows] = await pool.query<RowDataPacket[]>(sql);
+  return rows as Record<string, unknown>[];
+}
+
+export type Tx = {
+  execute(sql: string, params?: Param[]): Promise<ResultSetHeader>;
+  select<T>(sql: string, params?: Param[]): Promise<T[]>;
+};
+
+/**
+ * Runs writes in one transaction on one connection.
+ * @app_user is set first so the audit triggers can record who made the change.
+ */
+export async function transaction<T>(actor: string, work: (tx: Tx) => Promise<T>): Promise<T> {
+  const conn: PoolConnection = await pool.getConnection();
+  const tx: Tx = {
+    async execute(sql, params = []) {
+      const [result] = await conn.execute<ResultSetHeader>(sql, params);
+      return result;
+    },
+    async select<R>(sql: string, params: Param[] = []) {
+      const [rows] = await conn.execute<RowDataPacket[]>(sql, params);
+      return rows as R[];
+    },
+  };
+  try {
+    await conn.query("SET @app_user = ?", [actor]);
+    await conn.beginTransaction();
+    const result = await work(tx);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    // Pooled connections keep session variables, so clear it before reuse.
+    await conn.query("SET @app_user = NULL").catch(() => {});
+    conn.release();
+  }
+}
