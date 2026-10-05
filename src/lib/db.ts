@@ -6,6 +6,7 @@ import mysql, {
   type RowDataPacket,
 } from "mysql2/promise";
 import { connection } from "next/server";
+import { dbConfig, isProduction } from "@/lib/env";
 
 // Reuse one pool across hot reloads in development.
 const globalForDb = globalThis as unknown as { mysqlPool?: Pool };
@@ -13,17 +14,13 @@ const globalForDb = globalThis as unknown as { mysqlPool?: Pool };
 const pool =
   globalForDb.mysqlPool ??
   mysql.createPool({
-    host: process.env.DB_HOST ?? "127.0.0.1",
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME ?? "mangaldeep_claims",
+    ...dbConfig,
     connectionLimit: 5,
     dateStrings: true, // DATE columns come back as 'YYYY-MM-DD'
     decimalNumbers: true, // DECIMAL columns come back as numbers
   });
 
-if (process.env.NODE_ENV !== "production") globalForDb.mysqlPool = pool;
+if (!isProduction) globalForDb.mysqlPool = pool;
 
 type Param = string | number | null;
 
@@ -34,7 +31,7 @@ export async function query<T>(sql: string, params: Param[] = []): Promise<T[]> 
   return rows as T[];
 }
 
-/** Runs a read-only report query as plain text (used by the SQL Showcase page). */
+/** Runs a read-only report query as plain text (used by the Documentation page). */
 export async function runReport(sql: string): Promise<Record<string, unknown>[]> {
   await connection();
   const [rows] = await pool.query<RowDataPacket[]>(sql);

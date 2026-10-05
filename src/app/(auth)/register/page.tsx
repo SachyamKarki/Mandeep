@@ -7,9 +7,10 @@ import { MIN_PASSWORD_LENGTH, getCurrentUser, userCount } from "@/lib/auth";
 export const metadata: Metadata = { title: "Create an account" };
 
 export default async function RegisterPage() {
-  // The very first account is made on /setup, as an admin.
-  if ((await userCount()) === 0) redirect("/setup");
   if (await getCurrentUser()) redirect("/");
+  // Only used once, on a new install: the first account is the administrator.
+  // After that, accounts are created by the administrator on the Users page.
+  if ((await userCount()) > 0) redirect("/login");
 
   return (
     <AuthShell>

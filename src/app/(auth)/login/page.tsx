@@ -7,7 +7,8 @@ import { getCurrentUser, safeNext, userCount } from "@/lib/auth";
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  if ((await userCount()) === 0) redirect("/setup");
+  // A new install has no accounts yet: create the administrator first.
+  if ((await userCount()) === 0) redirect("/register");
   const sp = await searchParams;
   const next = safeNext(Array.isArray(sp.next) ? sp.next[0] : sp.next);
   if (await getCurrentUser()) redirect(next);

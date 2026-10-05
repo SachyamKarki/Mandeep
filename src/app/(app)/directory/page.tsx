@@ -1,64 +1,112 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2, HardHat, Users } from "lucide-react";
-import { addDirectoryEntry } from "@/app/actions";
-import { ActionForm } from "@/components/action-form";
-import { DataTable } from "@/components/data-table";
-import { SqlPeek } from "@/components/sql-block";
-import { Card, PageHeader, inputClass, labelClass } from "@/components/ui";
-import { DIRECTORY, type DirectoryConfig } from "@/lib/directory";
-import { CLIENTS_SQL, INSURERS_SQL, SURVEYORS_SQL, getClients, getInsurers, getSurveyors } from "@/lib/queries";
+import { Pencil } from "lucide-react";
+import { addDirectoryEntry, updateDirectoryEntry } from "@/actions/directory";
+import { DataTable } from "@/components/ui/data-table";
+import { DirectoryInput } from "@/components/directory/directory-input";
+import { ModalForm } from "@/components/ui/modal-form";
+import { Pagination, paginate } from "@/components/ui/pagination";
+import { TableToolbar } from "@/components/ui/table-toolbar";
+import { Card, PageHeader } from "@/components/ui";
+import { cn } from "@/lib/cn";
+import { DIRECTORY, isDirectoryKind, type DirectoryKind } from "@/lib/directory";
+import { getClients, getInsurers, getSurveyors } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Directory" };
 
 type Row = { id: number; name: string; detail: string; claims: number };
 
-function AddForm({ cfg }: { cfg: DirectoryConfig }) {
-  return (
-    <ActionForm
-      action={addDirectoryEntry}
-      submitLabel={`Add ${cfg.label.toLowerCase()}`}
-      className="mt-8 grid gap-4 border-t border-border pt-5 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
-    >
-      <input type="hidden" name="kind" value={cfg.kind} />
-      {cfg.fields.map((f) => (
-        <div key={f.name}>
-          <label htmlFor={`${cfg.kind}_${f.name}`} className={labelClass}>
-            {f.label}
-          </label>
-          <input
-            id={`${cfg.kind}_${f.name}`}
-            name={f.name}
-            required
-            maxLength={f.max}
-            placeholder={f.placeholder}
-            className={inputClass}
-          />
-        </div>
-      ))}
-    </ActionForm>
-  );
+const DETAIL_HEADER: Record<DirectoryKind, string> = { insurer: "Phone", client: "Phone", surveyor: "Licence no." };
+
+const USAGE = [
+  { value: "", label: "All records" },
+  { value: "used", label: "Used on claims" },
+  { value: "unused", label: "Not used yet" },
+];
+
+function one(value: string | string[] | undefined) {
+  return (Array.isArray(value) ? value[0] : value)?.trim().slice(0, 60) || undefined;
 }
 
-function Section({
-  cfg,
-  rows,
-  detailHeader,
-  sql,
-  icon,
-}: {
-  cfg: DirectoryConfig;
-  rows: Row[];
-  detailHeader: string;
-  sql: string;
-  icon: typeof Building2;
-}) {
+export default async function DirectoryPage({ searchParams }: PageProps<"/directory">) {
+  const sp = await searchParams;
+  const tabParam = one(sp.tab) ?? "insurer";
+  const tab: DirectoryKind = isDirectoryKind(tabParam) ? tabParam : "insurer";
+  const q = one(sp.q);
+  const usage = USAGE.some((u) => u.value === one(sp.usage)) ? one(sp.usage) : undefined;
+
+  const [insurers, clients, surveyors] = await Promise.all([getInsurers(), getClients(), getSurveyors()]);
+  const all: Record<DirectoryKind, Row[]> = {
+    insurer: insurers.map((r) => ({ id: r.insurer_id, name: r.insurer_name, detail: r.phone, claims: r.claims })),
+    client: clients.map((r) => ({ id: r.client_id, name: r.client_name, detail: r.phone, claims: r.claims })),
+    surveyor: surveyors.map((r) => ({ id: r.surveyor_id, name: r.surveyor_name, detail: r.licence_no, claims: r.claims })),
+  };
+
+  const cfg = DIRECTORY[tab];
+  const needle = q?.toLowerCase();
+  const filtered = all[tab].filter(
+    (r) =>
+      (!needle || r.name.toLowerCase().includes(needle) || r.detail.toLowerCase().includes(needle)) &&
+      (usage !== "used" || r.claims > 0) &&
+      (usage !== "unused" || r.claims === 0),
+  );
+  const { page, rows } = paginate(filtered, sp);
+
   return (
-    <div id={cfg.kind} className="scroll-mt-6">
-      <Card icon={icon} title={cfg.plural} description={`${rows.length} records · click a name to edit or delete`}>
+    <>
+      <PageHeader title="Directory" description="Insurers, clients and surveyors used on claims." />
+
+      {/* Tabs: one list at a time, with record counts. */}
+      <nav aria-label="Directory sections" className="mb-4 flex flex-wrap gap-1 border-b border-border">
+        {(Object.keys(DIRECTORY) as DirectoryKind[]).map((k) => (
+          <Link
+            key={k}
+            href={`/directory?tab=${k}`}
+            aria-current={k === tab ? "page" : undefined}
+            className={cn(
+              "-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors",
+              k === tab ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink",
+            )}
+          >
+            {DIRECTORY[k].plural}
+            <span className={cn("rounded-sm px-1.5 text-xs tabular-nums", k === tab ? "bg-ink text-surface" : "bg-subtle")}>
+              {all[k].length}
+            </span>
+          </Link>
+        ))}
+      </nav>
+
+      <Card
+        title={cfg.plural}
+        description={`${filtered.length} of ${all[tab].length} · open a name to view or edit`}
+        action={
+          <ModalForm
+            trigger={`Add ${cfg.label.toLowerCase()}`}
+            title={`Add ${cfg.label.toLowerCase()}`}
+            action={addDirectoryEntry}
+            submitLabel={`Add ${cfg.label.toLowerCase()}`}
+          >
+            <input type="hidden" name="kind" value={cfg.kind} />
+            {cfg.fields.map((f) => (
+              <DirectoryInput key={f.name} field={f} id={`${cfg.kind}_${f.name}`} />
+            ))}
+          </ModalForm>
+        }
+      >
+        <TableToolbar
+          basePath="/directory"
+          keep={{ tab }}
+          values={{ q, usage }}
+          search={{
+            name: "q",
+            placeholder: tab === "surveyor" ? "Search name or licence number" : "Search name or phone",
+          }}
+          filters={[{ name: "usage", label: "Usage", options: USAGE }]}
+        />
         <DataTable
           rows={rows}
           rowKey={(r) => r.id}
+          empty={q || usage ? "Nothing matches this search." : `No ${cfg.plural.toLowerCase()} yet.`}
           columns={[
             { header: "ID", cell: (r) => r.id },
             {
@@ -69,55 +117,37 @@ function Section({
                 </Link>
               ),
             },
-            { header: detailHeader, cell: (r) => r.detail },
+            { header: DETAIL_HEADER[tab], cell: (r) => r.detail },
             { header: "Claims", cell: (r) => r.claims, align: "right" },
+            {
+              header: "Actions",
+              cell: (r, view) => (
+                <ModalForm
+                  trigger="Edit"
+                  icon={<Pencil size={13} />}
+                  variant="link"
+                  title={`Edit ${cfg.label.toLowerCase()}`}
+                  description={r.name}
+                  action={updateDirectoryEntry}
+                  submitLabel="Save changes"
+                >
+                  <input type="hidden" name="kind" value={cfg.kind} />
+                  <input type="hidden" name="id" value={r.id} />
+                  {cfg.fields.map((f, i) => (
+                    <DirectoryInput
+                      key={f.name}
+                      field={f}
+                      id={`${view}_${cfg.kind}${r.id}_${f.name}`}
+                      defaultValue={i === 0 ? r.name : r.detail}
+                    />
+                  ))}
+                </ModalForm>
+              ),
+            },
           ]}
         />
-        <SqlPeek sql={sql} />
-        <AddForm cfg={cfg} />
+        <Pagination total={filtered.length} page={page} params={sp} basePath="/directory" />
       </Card>
-    </div>
-  );
-}
-
-export default async function DirectoryPage() {
-  const [insurers, clients, surveyors] = await Promise.all([getInsurers(), getClients(), getSurveyors()]);
-
-  return (
-    <>
-      <PageHeader
-        title="Directory"
-        description="Insurers, clients and surveyors are each stored once. Claims point to them by ID."
-      />
-
-      <div className="space-y-6">
-        <Section
-          cfg={DIRECTORY.insurer}
-          icon={Building2}
-          detailHeader="Phone"
-          sql={INSURERS_SQL}
-          rows={insurers.map((r) => ({ id: r.insurer_id, name: r.insurer_name, detail: r.phone, claims: r.claims }))}
-        />
-        <Section
-          cfg={DIRECTORY.client}
-          icon={Users}
-          detailHeader="Phone"
-          sql={CLIENTS_SQL}
-          rows={clients.map((r) => ({ id: r.client_id, name: r.client_name, detail: r.phone, claims: r.claims }))}
-        />
-        <Section
-          cfg={DIRECTORY.surveyor}
-          icon={HardHat}
-          detailHeader="Licence no."
-          sql={SURVEYORS_SQL}
-          rows={surveyors.map((r) => ({
-            id: r.surveyor_id,
-            name: r.surveyor_name,
-            detail: r.licence_no,
-            claims: r.claims,
-          }))}
-        />
-      </div>
     </>
   );
 }

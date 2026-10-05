@@ -4,7 +4,8 @@ import { promisify } from "node:util";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
-import { query, transaction } from "./db";
+import { query, transaction } from "@/lib/db";
+import { isProduction } from "@/lib/env";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, keylen: number) => Promise<Buffer>;
 
@@ -74,7 +75,7 @@ export async function startSession(userId: number, remember: boolean) {
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isProduction,
     path: "/",
     // Without "remember", the cookie is dropped when the browser closes.
     ...(remember ? { expires } : {}),

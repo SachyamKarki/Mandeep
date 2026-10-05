@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // requireUser() on every page and server action.
 
 const SESSION_COOKIE = "mcs_session";
-const PUBLIC_PATHS = ["/login", "/setup", "/register"];
+const PUBLIC_PATHS = ["/login", "/register"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

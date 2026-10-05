@@ -1,14 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { Check, Circle, Clock, Loader2 } from "lucide-react";
-import { register } from "@/app/auth-actions";
-import { useFormAction } from "../use-form-action";
-import { AuthAlert, AuthField, AuthHeading, authButtonClass } from "./auth-shell";
+import { Check, Circle, Loader2 } from "lucide-react";
+import { setupFirstAdmin } from "@/actions/auth";
+import { useFormAction } from "@/hooks/use-form-action";
+import { AuthAlert, AuthField, AuthHeading, authButtonClass } from "@/components/auth/auth-shell";
 
+/** First run only: creates the single administrator account and signs them in. */
 export function RegisterForm({ minLength }: { minLength: number }) {
-  const { state, pending, formProps } = useFormAction(register);
+  const { state, pending, formProps } = useFormAction(setupFirstAdmin);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 
@@ -18,29 +18,10 @@ export function RegisterForm({ minLength }: { minLength: number }) {
     { label: "Both passwords match", ok: password.length > 0 && password === confirm },
   ];
 
-  if (state.success) {
-    return (
-      <>
-        <AuthHeading title="Request sent" />
-        <div className="flex gap-2.5 rounded-md border border-border bg-subtle px-3.5 py-3 text-sm leading-relaxed text-ink-soft">
-          <Clock size={16} className="mt-0.5 shrink-0 text-muted" />
-          <span>{state.success}</span>
-        </div>
-        <p className="mt-6 text-center text-sm text-muted">
-          <Link href="/login" className="font-semibold text-ink hover:underline">
-            Back to sign in
-          </Link>
-        </p>
-      </>
-    );
-  }
 
   return (
     <>
-      <AuthHeading
-        title="Create an account"
-        subtitle="Your name, work email and a password. An administrator approves new accounts before they can sign in."
-      />
+      <AuthHeading title="Create the administrator account" subtitle="Other users are added later from the Users page." />
       <AuthAlert>{state.error}</AuthAlert>
 
       <form {...formProps}>
@@ -74,16 +55,9 @@ export function RegisterForm({ minLength }: { minLength: number }) {
 
         <button type="submit" disabled={pending} className={authButtonClass}>
           {pending && <Loader2 size={16} className="animate-spin" />}
-          {pending ? "Sending request…" : "Create account"}
+          {pending ? "Creating account…" : "Create account"}
         </button>
       </form>
-
-      <p className="mt-6 text-center text-sm text-muted">
-        Already have an account?{" "}
-        <Link href="/login" className="font-semibold text-ink hover:underline">
-          Sign in
-        </Link>
-      </p>
     </>
   );
 }

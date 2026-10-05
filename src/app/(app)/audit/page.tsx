@@ -1,38 +1,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FilePlus2, FileX2, History, PencilLine } from "lucide-react";
-import { AuditList } from "@/components/audit-list";
-import { SqlBlock, SqlPeek } from "@/components/sql-block";
-import {
-  Card,
-  PageHeader,
-  StatRow,
-  buttonClass,
-  inputClass,
-  labelClass,
-  secondaryButtonClass,
-} from "@/components/ui";
-import { query } from "@/lib/db";
-import { AUDIT_ACTIONS, AUDIT_TABLES, auditLogSql, getAuditLog, getAuditUsers } from "@/lib/queries";
+import { Changes, actionTone, actionWord, recordLink, recordName } from "@/components/audit/audit-list";
+import { DataTable } from "@/components/ui/data-table";
+import { TableToolbar } from "@/components/ui/table-toolbar";
+import { PAGE_SIZE, Pagination } from "@/components/ui/pagination";
+import { Card, PageHeader } from "@/components/ui";
+import { requireUser } from "@/lib/auth";
+import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
+import { AUDIT_ACTIONS, AUDIT_TABLES, getAuditPage, getAuditUsers } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Audit trail" };
 
-const COUNTS_SQL = `SELECT
-  SUM(action = 'INSERT') AS inserts,
-  SUM(action = 'UPDATE') AS updates,
-  SUM(action = 'DELETE') AS deletes
-FROM audit_log`;
-
-const TRIGGER_EXAMPLE = `CREATE TRIGGER trg_invoice_after_update AFTER UPDATE ON invoice
-FOR EACH ROW
-  INSERT INTO audit_log (table_name, record_id, action, changed_by, old_data, new_data)
-  SELECT 'invoice', NEW.invoice_id, 'UPDATE', COALESCE(@app_user, CURRENT_USER()),
-         JSON_OBJECT('invoice_id', OLD.invoice_id, 'claim_id', OLD.claim_id,
-                     'fee_amount', OLD.fee_amount, 'amount_paid', OLD.amount_paid),
-         JSON_OBJECT('invoice_id', NEW.invoice_id, 'claim_id', NEW.claim_id,
-                     'fee_amount', NEW.fee_amount, 'amount_paid', NEW.amount_paid)
-  FROM DUAL
-  WHERE JSON_OBJECT(... OLD ...) <> JSON_OBJECT(... NEW ...);  -- skip no-op updates`;
+const TABLE_LABELS: Record<(typeof AUDIT_TABLES)[number], string> = {
+  insurer: "Insurers",
+  client: "Clients",
+  surveyor: "Surveyors",
+  claim: "Claims",
+  site_visit: "Site visits",
+  invoice: "Invoices",
+  app_user: "User accounts",
+};
 
 function pick(value: string | string[] | undefined, allowed?: readonly string[]) {
   const v = Array.isArray(value) ? value[0] : value;
@@ -41,113 +29,89 @@ function pick(value: string | string[] | undefined, allowed?: readonly string[])
   return v.slice(0, 100);
 }
 
+/** '2026-10-05 13:45:45' -> '5 Oct 2026, 13:45' */
+function when(value: string) {
+  const [day, time = ""] = value.split(" ");
+  return `${formatDate(day)}, ${time.slice(0, 5)}`;
+}
+
 export default async function AuditPage({ searchParams }: PageProps<"/audit">) {
+  const user = await requireUser();
+  // Login-account changes are for administrators only (staff cannot read app_user in MySQL either).
+  const isAdmin = user.role === "admin";
+  const tables = isAdmin ? AUDIT_TABLES : AUDIT_TABLES.filter((t) => t !== "app_user");
+
   const sp = await searchParams;
-  const record = Number(pick(sp.record));
   const filters = {
-    table: pick(sp.table, AUDIT_TABLES),
+    table: pick(sp.table, tables),
     action: pick(sp.action, AUDIT_ACTIONS),
     user: pick(sp.user),
-    record: Number.isInteger(record) && record > 0 ? record : undefined,
+    hideAccounts: !isAdmin,
   };
 
-  const [entries, users, [counts]] = await Promise.all([
-    getAuditLog(filters),
+  const [{ rows: entries, total, page }, users] = await Promise.all([
+    getAuditPage(filters, Number(pick(sp.page)) || 1, PAGE_SIZE),
     getAuditUsers(),
-    query<{ inserts: number | null; updates: number | null; deletes: number | null }>(COUNTS_SQL),
   ]);
-  const { sql, params } = auditLogSql(filters);
 
   return (
     <>
-      <PageHeader
-        eyebrow="MySQL triggers"
-        title="Audit trail"
-        description="Every insert, edit and delete on the six tables is written to audit_log by a trigger, with the old and new values and who made the change."
-      />
+      <PageHeader title="Audit trail" description="A record of every change: what changed, who changed it, and when." />
 
-      <StatRow
-        items={[
-          { label: "Records added", value: String(counts.inserts ?? 0), icon: FilePlus2 },
-          { label: "Edits", value: String(counts.updates ?? 0), icon: PencilLine },
-          { label: "Deletions", value: String(counts.deletes ?? 0), icon: FileX2, tone: counts.deletes ? "bad" : undefined },
-        ]}
-      />
-      <SqlPeek sql={COUNTS_SQL} label="View SQL for these figures" />
-
-      <Card className="mt-6">
-        <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_140px_auto]">
-          <div>
-            <label htmlFor="table" className={labelClass}>
-              Table
-            </label>
-            <select id="table" name="table" defaultValue={filters.table ?? ""} className={inputClass}>
-              <option value="">All tables</option>
-              {AUDIT_TABLES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="action" className={labelClass}>
-              Action
-            </label>
-            <select id="action" name="action" defaultValue={filters.action ?? ""} className={inputClass}>
-              <option value="">All actions</option>
-              {AUDIT_ACTIONS.map((a) => (
-                <option key={a}>{a}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="user" className={labelClass}>
-              Changed by
-            </label>
-            <select id="user" name="user" defaultValue={filters.user ?? ""} className={inputClass}>
-              <option value="">Anyone</option>
-              {users.map((u) => (
-                <option key={u.changed_by}>{u.changed_by}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="record" className={labelClass}>
-              Record ID
-            </label>
-            <input id="record" name="record" type="number" min="1" defaultValue={filters.record} className={inputClass} />
-          </div>
-          <div className="flex items-end gap-2">
-            <button type="submit" className={buttonClass}>
-              Filter
-            </button>
-            <Link href="/audit" className={secondaryButtonClass}>
-              Clear
-            </Link>
-          </div>
-        </form>
-      </Card>
 
       <Card
-        className="mt-6"
-        icon={History}
-        title={`${entries.length} ${entries.length === 1 ? "change" : "changes"}`}
-        description="Newest first, up to 200"
+        title={`${total} ${total === 1 ? "change" : "changes"}`}
+        description="Newest first"
       >
-        <AuditList entries={entries} empty="No changes match. Add, edit or delete something and it will show here." />
-        <div className="mt-8">
-          <SqlPeek
-            sql={params.length ? `${sql}\n\n-- parameters: ${params.map((p) => `'${p}'`).join(", ")}` : sql}
-          />
-        </div>
-      </Card>
-
-      <Card className="mt-6" title="How it works" description="One of the 18 triggers in database/04_audit.sql">
-        <p className="mb-4 text-sm text-muted">
-          The app runs <code className="font-mono text-ink">SET @app_user = &apos;name&apos;</code> before each write.
-          The trigger reads it, so the log knows who made the change. Changes made straight in the mysql client are
-          logged too, under the MySQL user name.
-        </p>
-        <SqlBlock sql={TRIGGER_EXAMPLE} />
+        <TableToolbar
+          basePath="/audit"
+          values={{ table: filters.table, action: filters.action, user: filters.user }}
+          filters={[
+            {
+              name: "table",
+              label: "Record type",
+              options: [{ value: "", label: "All records" }, ...tables.map((t) => ({ value: t, label: TABLE_LABELS[t] }))],
+            },
+            {
+              name: "action",
+              label: "Change",
+              options: [{ value: "", label: "All changes" }, ...AUDIT_ACTIONS.map((a) => ({ value: a, label: actionWord[a] }))],
+            },
+            {
+              name: "user",
+              label: "Changed by",
+              options: [{ value: "", label: "Anyone" }, ...users.map((u) => ({ value: u.changed_by, label: u.changed_by }))],
+            },
+          ]}
+        />
+        <DataTable
+          rows={entries}
+          rowKey={(e) => e.audit_id}
+          empty="No changes match these filters."
+          columns={[
+            { header: "When", cell: (e) => when(e.changed_at) },
+            {
+              header: "Record",
+              cell: (e) => {
+                const href = recordLink(e);
+                return href ? (
+                  <Link href={href} className="font-semibold text-ink hover:underline">
+                    {recordName(e)}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-ink">{recordName(e)}</span>
+                );
+              },
+            },
+            {
+              header: "Change",
+              cell: (e) => <span className={cn("font-semibold", actionTone[e.action])}>{actionWord[e.action]}</span>,
+            },
+            { header: "By", cell: (e) => e.changed_by },
+            { header: "Details", cell: (e) => <Changes entry={e} />, wrap: true },
+          ]}
+        />
+        <Pagination total={total} page={page} params={sp} basePath="/audit" />
       </Card>
     </>
   );

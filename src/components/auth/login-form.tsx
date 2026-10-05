@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { login } from "@/app/auth-actions";
-import { useFormAction } from "../use-form-action";
-import { AuthAlert, AuthField, AuthHeading, authButtonClass } from "./auth-shell";
+import { login } from "@/actions/auth";
+import { useFormAction } from "@/hooks/use-form-action";
+import { AuthAlert, AuthField, AuthHeading, authButtonClass } from "@/components/auth/auth-shell";
 
 export function LoginForm({ next }: { next: string }) {
   const { state, pending, formProps } = useFormAction(login);
@@ -13,7 +12,7 @@ export function LoginForm({ next }: { next: string }) {
 
   return (
     <>
-      <AuthHeading title="Sign in" subtitle="Sign in to manage claims, site visits and survey fees." />
+      <AuthHeading title="Sign in" subtitle="Welcome back. Enter your details to continue." />
 
       <AuthAlert>{state.error}</AuthAlert>
 
@@ -68,13 +67,6 @@ export function LoginForm({ next }: { next: string }) {
           {pending ? "Signing in…" : "Sign in"}
         </button>
       </form>
-
-      <p className="mt-6 text-center text-sm text-muted">
-        New to the team?{" "}
-        <Link href="/register" className="font-semibold text-ink hover:underline">
-          Create an account
-        </Link>
-      </p>
     </>
   );
 }

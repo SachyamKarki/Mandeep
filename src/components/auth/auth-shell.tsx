@@ -2,7 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
-import { Background3D } from "./background-3d";
+import { cn } from "@/lib/cn";
+import { buttonClass } from "@/components/ui";
+import { Background3D } from "@/components/auth/background-3d";
 
 // Sign-in chrome, following the scrapper app's features/auth/components/AuthShell.jsx.
 
@@ -21,7 +23,6 @@ export function AuthShell({ children, tracedBorder = false }: { children: ReactN
           <div className="flex flex-col items-center text-center select-none">
             <div className="inline-flex items-baseline gap-1.5">
               <span className="text-[26px] font-bold tracking-tight text-ink">Mangaldeep</span>
-              <span className="text-[22px] font-light text-muted">Claims</span>
             </div>
             <p className="mt-1 text-xs tracking-[0.08em] text-faint uppercase">Claim Survey Management</p>
           </div>
@@ -132,5 +133,4 @@ export function AuthAlert({ children, tone = "error" }: { children?: ReactNode; 
   );
 }
 
-export const authButtonClass =
-  "inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-ink bg-ink px-4 text-sm font-semibold tracking-tight text-surface transition-all hover:border-ink-soft hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-50";
+export const authButtonClass = cn(buttonClass, "h-10 w-full");

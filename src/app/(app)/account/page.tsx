@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { KeyRound, Laptop, UserRound } from "lucide-react";
-import { changeOwnPassword, signOutOtherDevices } from "@/app/auth-actions";
-import { ActionForm } from "@/components/action-form";
+import { changeOwnPassword, signOutOtherDevices } from "@/actions/account";
+import { ActionForm } from "@/components/ui/action-form";
 import { Card, PageHeader, inputClass, labelClass } from "@/components/ui";
 import { MIN_PASSWORD_LENGTH, currentTokenHash, requireUser } from "@/lib/auth";
 import { getSessionsFor } from "@/lib/queries";
@@ -42,7 +42,7 @@ export default async function AccountPage() {
     <>
       <PageHeader title="My account" description="Your profile, password and signed-in devices." />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 [&>*]:min-w-0">
         <Card icon={UserRound} title="Profile">
           <dl className="space-y-3 text-sm">
             <div>

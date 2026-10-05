@@ -95,7 +95,8 @@ CREATE TABLE invoice (
 -- Login tables (support the app; not part of the ER diagram)
 -- -------------------------------------------------------------
 
--- Staff who can sign in. Passwords are stored only as scrypt hashes.
+-- People who can sign in: one administrator, everyone else staff.
+-- Passwords are stored only as scrypt hashes.
 CREATE TABLE app_user (
   user_id              INT UNSIGNED  NOT NULL AUTO_INCREMENT,
   full_name            VARCHAR(100)  NOT NULL,
@@ -108,8 +109,12 @@ CREATE TABLE app_user (
   password_changed_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_login_at        DATETIME      NULL,
   created_at           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  -- 1 for the administrator, NULL for staff. The UNIQUE key below allows many NULLs
+  -- but only one 1, so MySQL itself guarantees there is never a second admin.
+  admin_slot           TINYINT       AS (IF(role = 'admin', 1, NULL)) VIRTUAL,
   PRIMARY KEY (user_id),
-  UNIQUE KEY uq_user_email (email)
+  UNIQUE KEY uq_user_email (email),
+  UNIQUE KEY uq_one_admin (admin_slot)
 ) ENGINE = InnoDB;
 
 -- One row per signed-in browser. Only a SHA-256 hash of the cookie token is kept,

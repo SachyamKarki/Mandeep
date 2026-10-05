@@ -1,7 +1,19 @@
 import Link from "next/link";
-import { ArrowUpRight, Banknote, ClipboardList, FileWarning, PieChart, Receipt, Wallet } from "lucide-react";
-import { DataTable } from "@/components/data-table";
-import { SqlPeek } from "@/components/sql-block";
+import {
+  ArrowUpRight,
+  Banknote,
+  Building2,
+  ChevronRight,
+  ClipboardList,
+  FileText,
+  FileWarning,
+  MapPin,
+  PieChart,
+  Receipt,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
+import { DataTable } from "@/components/ui/data-table";
 import {
   Bar,
   Card,
@@ -9,20 +21,34 @@ import {
   PaymentBadge,
   StatRow,
   StatusBadge,
-  buttonClass,
   linkClass,
+  panelClass,
 } from "@/components/ui";
 import { claimNo, formatDate, npr } from "@/lib/format";
 import {
-  DASHBOARD_STATS_SQL,
-  LOSS_TYPE_SUMMARY_SQL,
-  OPEN_CLAIMS_SQL,
-  UNPAID_INVOICES_SQL,
   getDashboardStats,
   getLossTypeSummary,
   getOpenClaims,
   getUnpaidInvoices,
 } from "@/lib/queries";
+
+function Shortcut({ href, icon: Icon, label, hint }: { href: string; icon: LucideIcon; label: string; hint: string }) {
+  return (
+    <Link
+      href={href}
+      className={`${panelClass} group flex min-w-0 items-center gap-3 px-4 py-3.5 transition-colors hover:border-ink/40 hover:bg-subtle`}
+    >
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-subtle text-accent group-hover:bg-surface">
+        <Icon size={18} strokeWidth={1.8} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-ink">{label}</span>
+        <span className="block truncate text-xs text-muted">{hint}</span>
+      </span>
+      <ChevronRight size={16} className="shrink-0 text-faint group-hover:text-ink" />
+    </Link>
+  );
+}
 
 export default async function DashboardPage() {
   const [stats, openClaims, unpaid, lossTypes] = await Promise.all([
@@ -31,19 +57,15 @@ export default async function DashboardPage() {
     getUnpaidInvoices(),
     getLossTypeSummary(),
   ]);
+  const recentOpen = openClaims.slice(0, 8);
+  const topUnpaid = unpaid.slice(0, 8);
   const maxClaimed = Math.max(...lossTypes.map((l) => l.total_claimed), 1);
 
   return (
     <>
       <PageHeader
-        eyebrow="Mangaldeep Consulting"
         title="Dashboard"
-        description="Open claims and unpaid survey fees at a glance, read live from the MySQL database."
-        action={
-          <Link href="/claims/new" className={buttonClass}>
-            New claim
-          </Link>
-        }
+        description="Open claims and unpaid survey fees at a glance."
       />
 
       <StatRow
@@ -54,25 +76,29 @@ export default async function DashboardPage() {
             hint: `of ${stats.total_claims} claims in total`,
             icon: ClipboardList,
           },
-          { label: "Value under survey", value: npr(stats.open_value), hint: "Claimed on open claims", icon: Wallet },
+          { label: "Under survey", value: npr(stats.open_value), hint: "Claimed on open claims", icon: Wallet },
           { label: "Fees billed", value: npr(stats.fees_billed), icon: Receipt },
           {
             label: "Fees outstanding",
             value: npr(stats.fees_outstanding),
             hint: `${unpaid.length} invoices still owing`,
             icon: Banknote,
-            tone: stats.fees_outstanding > 0 ? "warn" : undefined,
           },
         ]}
       />
-      <SqlPeek sql={DASHBOARD_STATS_SQL} label="View SQL for these figures" />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <nav aria-label="Shortcuts" className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Shortcut href="/claims" icon={FileText} label="Claims" hint={`${stats.total_claims} claims · search and filter`} />
+        <Shortcut href="/visits" icon={MapPin} label="Site visits" hint="Every survey visit, newest first" />
+        <Shortcut href="/invoices" icon={Receipt} label="Invoices" hint={`${unpaid.length} still owing`} />
+        <Shortcut href="/directory" icon={Building2} label="Directory" hint="Insurers, clients and surveyors" />
+      </nav>
+
+      <div className="mt-6 space-y-6">
         <Card
-          className="lg:col-span-2"
           icon={ClipboardList}
           title="Open claims"
-          description="Claims that are not closed yet"
+          description={`${openClaims.length} claims not closed yet`}
           action={
             <Link href="/claims?status=Open" className={linkClass}>
               View all <ArrowUpRight size={15} />
@@ -80,7 +106,7 @@ export default async function DashboardPage() {
           }
         >
           <DataTable
-            rows={openClaims}
+            rows={recentOpen}
             rowKey={(r) => r.claim_id}
             empty="No open claims."
             columns={[
@@ -93,31 +119,28 @@ export default async function DashboardPage() {
                 ),
               },
               { header: "Client", cell: (r) => r.client_name },
-              { header: "Type", cell: (r) => r.loss_type },
+              { header: "Type", cell: (r) => r.loss_type, hideBelow: "xl" },
               { header: "Claimed", cell: (r) => npr(r.claimed_amount), align: "right" },
-              { header: "Visits", cell: (r) => r.visit_count, align: "right" },
               { header: "Last visit", cell: (r) => formatDate(r.last_visit) },
               { header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
             ]}
           />
-          <SqlPeek sql={OPEN_CLAIMS_SQL} />
         </Card>
 
         <Card icon={PieChart} title="Claims by loss type" description="Total amount claimed">
-          <ul className="space-y-5">
+          <ul className="grid gap-5 md:grid-cols-3 md:gap-8">
             {lossTypes.map((l) => (
               <li key={l.loss_type}>
                 <div className="mb-2 flex items-baseline justify-between gap-4 text-sm">
-                  <span className="font-medium text-ink">
+                  <span className="min-w-0 truncate font-medium text-ink">
                     {l.loss_type} <span className="font-normal text-muted">· {l.claims} claims</span>
                   </span>
-                  <span className="font-semibold tabular-nums text-ink">{npr(l.total_claimed)}</span>
+                  <span className="font-semibold whitespace-nowrap tabular-nums text-ink">{npr(l.total_claimed)}</span>
                 </div>
                 <Bar pct={(l.total_claimed / maxClaimed) * 100} />
               </li>
             ))}
           </ul>
-          <SqlPeek sql={LOSS_TYPE_SUMMARY_SQL} />
         </Card>
       </div>
 
@@ -125,7 +148,7 @@ export default async function DashboardPage() {
         className="mt-6"
         icon={FileWarning}
         title="Unpaid fees"
-        description="Invoices with money still owing, from the v_unpaid_invoices view"
+        description={`${unpaid.length} invoices with money still owing`}
         action={
           <Link href="/invoices" className={linkClass}>
             All invoices <ArrowUpRight size={15} />
@@ -133,7 +156,7 @@ export default async function DashboardPage() {
         }
       >
         <DataTable
-          rows={unpaid}
+          rows={topUnpaid}
           rowKey={(r) => r.invoice_id}
           empty="All fees are paid."
           columns={[
@@ -145,10 +168,10 @@ export default async function DashboardPage() {
                 </Link>
               ),
             },
-            { header: "Insurer", cell: (r) => r.insurer_name },
+            { header: "Insurer", cell: (r) => r.insurer_name, hideBelow: "xl" },
             { header: "Client", cell: (r) => r.client_name },
             { header: "Fee", cell: (r) => npr(r.fee_amount), align: "right" },
-            { header: "Paid", cell: (r) => npr(r.amount_paid), align: "right" },
+            { header: "Paid", cell: (r) => npr(r.amount_paid), align: "right", hideBelow: "xl" },
             {
               header: "Balance due",
               cell: (r) => <span className="font-semibold text-ink">{npr(r.balance_due)}</span>,
@@ -157,7 +180,6 @@ export default async function DashboardPage() {
             { header: "Status", cell: (r) => <PaymentBadge fee={r.fee_amount} paid={r.amount_paid} /> },
           ]}
         />
-        <SqlPeek sql={UNPAID_INVOICES_SQL} />
       </Card>
     </>
   );
