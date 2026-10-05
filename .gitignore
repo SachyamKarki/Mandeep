@@ -44,3 +44,8 @@ next-env.d.ts
 # editor settings
 /.vscode/
 /.idea/
+
+# AI tooling
+/.claude/
+/AGENTS.md
+/CLAUDE.md
