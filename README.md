@@ -46,6 +46,7 @@ Secrets live only in `.env.local`, which git ignores. `.env.example` lists every
 | `04_audit.sql` | `audit_log` table and 21 triggers that record every insert, edit and delete as JSON, with who did it |
 | `05_queries.sql` | 13 report queries: JOINs, GROUP BY / HAVING, subqueries, CTEs, window functions, JSON |
 | `06_access.sql` | MySQL roles: `mcs_read`, `mcs_staff` (no deletes), `mcs_admin` (deletes, logins). `audit_log` is read-only for everyone but the schema owner |
+| `benchmark_practice.sql` | 28 read-only practice queries to run one at a time in MySQL Workbench (the last one needs the admin account) |
 
 ### Database accounts
 
